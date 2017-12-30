@@ -615,11 +615,23 @@ class pil_build_ext(build_ext):
         else:
             defs.append(("PILLOW_VERSION", '"%s"'%PILLOW_VERSION))
 
-        exts = [(Extension("PIL._imaging",
-                           files,
-                           libraries=libs,
-                           define_macros=defs,
-                           extra_compile_args=['-msse4']))]
+        # builds = [("generic", [])]
+        builds = []
+        if plat.machine() in ["x86_64"] and \
+           not (sys.platform == "win32" and not PLATFORM_MINGW):
+            builds += [
+                ("sse4", ["-msse4"]),
+                ("avx2", ["-msse4", "-mavx2"]),
+            ]
+
+        exts = []
+        for suffix, compile_args in builds:
+            exts.append(Extension(
+                "PIL._imaging_" + suffix,
+                files,
+                libraries=libs,
+                define_macros=defs,
+                extra_compile_args=compile_args))
 
         #
         # additional libraries
@@ -664,6 +676,7 @@ class pil_build_ext(build_ext):
 
         exts.append(Extension("PIL._imagingmath", ["_imagingmath.c"]))
         exts.append(Extension("PIL._imagingmorph", ["_imagingmorph.c"]))
+        exts.append(Extension("PIL._imagingbuilds", ["_imagingbuilds.c"]))
 
         self.extensions[:] = exts
 

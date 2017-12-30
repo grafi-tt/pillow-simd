@@ -62,3 +62,26 @@ _plugins = ['BmpImagePlugin',
             'XbmImagePlugin',
             'XpmImagePlugin',
             'XVThumbImagePlugin']
+
+
+from ._imagingbuilds import get_available_builds
+
+
+_current_build = get_available_builds()[0]
+
+
+def get_build():
+    return _current_build
+
+
+def set_build(build):
+    global _current_build
+    available_builds = get_available_builds()
+    if build not in available_builds:
+        raise ValueError("build %s not available; "
+                         "following is the list of available builds: \n%s" %
+                         (build, '\n'.join(available_builds)))
+    _current_build = build
+
+    from .Image import _import_core
+    _import_core()

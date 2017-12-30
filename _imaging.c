@@ -3700,17 +3700,34 @@ setup_module(PyObject* m) {
     return 0;
 }
 
+#if defined(__AVX2__)
+#define SUFFIX avx2
+#elif defined(__SSE4_1__) && defined(__SSE4_2__)
+#define SUFFIX sse4
+#else
+#define SUFFIX generic
+#endif
+
+#define MODULE_NAME()
+#define ADD_SUFFIX(name) ADD_SUFFIX_EXPAND1(name, SUFFIX)
+#define ADD_SUFFIX_EXPAND1(name, suffix) ADD_SUFFIX_EXPAND2(name, suffix)
+#define ADD_SUFFIX_EXPAND2(name, suffix) name ## _ ## suffix
+
+#define STR_ADD_SUFFIX(name) STR_ADD_SUFFIX_EXPAND1(ADD_SUFFIX(name))
+#define STR_ADD_SUFFIX_EXPAND1(name_suffix) STR_ADD_SUFFIX_EXPAND2(name_suffix)
+#define STR_ADD_SUFFIX_EXPAND2(name_suffix) #name_suffix
+
 #if PY_VERSION_HEX >= 0x03000000
 PyMODINIT_FUNC
-PyInit__imaging(void) {
+ADD_SUFFIX(PyInit__imaging)(void) {
     PyObject* m;
 
     static PyModuleDef module_def = {
         PyModuleDef_HEAD_INIT,
-        "_imaging",         /* m_name */
-        NULL,               /* m_doc */
-        -1,                 /* m_size */
-        functions,          /* m_methods */
+        STR_ADD_SUFFIX(_imaging),   /* m_name */
+        NULL,                       /* m_doc */
+        -1,                         /* m_size */
+        functions,                  /* m_methods */
     };
 
     m = PyModule_Create(&module_def);
@@ -3722,9 +3739,9 @@ PyInit__imaging(void) {
 }
 #else
 PyMODINIT_FUNC
-init_imaging(void)
+ADD_SUFFIX(PyInit__imaging)(void)
 {
-    PyObject* m = Py_InitModule("_imaging", functions);
+    PyObject* m = Py_InitModule(STR_ADD_SUFFIX(_imaging), functions);
     setup_module(m);
 }
 #endif

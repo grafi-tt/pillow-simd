@@ -24,7 +24,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-from . import VERSION, PILLOW_VERSION, _plugins
+from . import VERSION, PILLOW_VERSION, _plugins, get_build
 
 import logging
 import warnings
@@ -47,54 +47,76 @@ class _imaging_not_installed(object):
 MAX_IMAGE_PIXELS = int(1024 * 1024 * 1024 // 4 // 3)
 
 
-try:
-    # If the _imaging C module is not present, Pillow will not load.
-    # Note that other modules should not refer to _imaging directly;
-    # import Image and use the Image.core variable instead.
-    # Also note that Image.core is not a publicly documented interface,
-    # and should be considered private and subject to change.
-    from . import _imaging as core
-    if PILLOW_VERSION != getattr(core, 'PILLOW_VERSION', None):
-        raise ImportError("The _imaging extension was built for another "
-                          "version of Pillow or PIL:\n"
-                          "Core version: %s\n"
-                          "Pillow version: %s" %
-                          (getattr(core, 'PILLOW_VERSION', None),
-                           PILLOW_VERSION))
+def _import_core():
+    global core
 
-except ImportError as v:
-    core = _imaging_not_installed()
-    # Explanations for ways that we know we might have an import error
-    if str(v).startswith("Module use of python"):
-        # The _imaging C module is present, but not compiled for
-        # the right version (windows only).  Print a warning, if
-        # possible.
-        warnings.warn(
-            "The _imaging extension was built for another version "
-            "of Python.",
-            RuntimeWarning
-            )
-    elif str(v).startswith("The _imaging extension"):
-        warnings.warn(str(v), RuntimeWarning)
-    elif "Symbol not found: _PyUnicodeUCS2_" in str(v):
-        # should match _PyUnicodeUCS2_FromString and
-        # _PyUnicodeUCS2_AsLatin1String
-        warnings.warn(
-            "The _imaging extension was built for Python with UCS2 support; "
-            "recompile Pillow or build Python --without-wide-unicode. ",
-            RuntimeWarning
-            )
-    elif "Symbol not found: _PyUnicodeUCS4_" in str(v):
-        # should match _PyUnicodeUCS4_FromString and
-        # _PyUnicodeUCS4_AsLatin1String
-        warnings.warn(
-            "The _imaging extension was built for Python with UCS4 support; "
-            "recompile Pillow or build Python --with-wide-unicode. ",
-            RuntimeWarning
-            )
-    # Fail here anyway. Don't let people run with a mostly broken Pillow.
-    # see docs/porting.rst
-    raise
+    try:
+        # If the _imaging C module is not present, Pillow will not load.
+        # Note that other modules should not refer to _imaging directly;
+        # import Image and use the Image.core variable instead.
+        # Also note that Image.core is not a publicly documented interface,
+        # and should be considered private and subject to change.
+        build = get_build()
+        if build == 'AVX2':
+            from . import _imaging_avx2 as core
+        elif build == 'SSE4':
+            from . import _imaging_sse4 as core
+        elif build == 'GENERIC':
+            raise NotImplementedError("Generic build of _imaging extension "
+                                      "is currently not implemented.")
+        else:
+            raise ImportError("Invalid build name: %s" % build)
+        if core not in _imported_cores:
+            _imported_cores.append(core)
+
+        if PILLOW_VERSION != getattr(core, 'PILLOW_VERSION', None):
+            raise ImportError("The _imaging extension was built for another "
+                              "version of Pillow or PIL:\n"
+                              "Core version: %s\n"
+                              "Pillow version: %s" %
+                              (getattr(core, 'PILLOW_VERSION', None),
+                               PILLOW_VERSION))
+
+    except ImportError as v:
+        core = _imaging_not_installed()
+        # Explanations for ways that we know we might have an import error
+        if str(v).startswith("Module use of python"):
+            # The _imaging C module is present, but not compiled for
+            # the right version (windows only).  Print a warning, if
+            # possible.
+            warnings.warn(
+                "The _imaging extension was built for another version "
+                "of Python.",
+                RuntimeWarning
+                )
+        elif str(v).startswith("The _imaging extension"):
+            warnings.warn(str(v), RuntimeWarning)
+        elif "Symbol not found: _PyUnicodeUCS2_" in str(v):
+            # should match _PyUnicodeUCS2_FromString and
+            # _PyUnicodeUCS2_AsLatin1String
+            warnings.warn(
+                "The _imaging extension was built for Python with "
+                "UCS2 support; "
+                "recompile Pillow or build Python --without-wide-unicode. ",
+                RuntimeWarning
+                )
+        elif "Symbol not found: _PyUnicodeUCS4_" in str(v):
+            # should match _PyUnicodeUCS4_FromString and
+            # _PyUnicodeUCS4_AsLatin1String
+            warnings.warn(
+                "The _imaging extension was built for Python with "
+                "UCS4 support; "
+                "recompile Pillow or build Python --with-wide-unicode. ",
+                RuntimeWarning
+                )
+        # Fail here anyway. Don't let people run with a mostly broken Pillow.
+        # see docs/porting.rst
+        raise
+
+
+_imported_cores = []
+_import_core()
+
 
 try:
     import builtins
@@ -2874,4 +2896,10 @@ def _apply_env_variables(env=None):
             warnings.warn("{0}: {1}".format(var_name, e))
 
 _apply_env_variables()
-atexit.register(core.clear_cache)
+
+
+def _clear_all_caches():
+    for _core in _imported_cores:
+        _core.clear_cache()
+
+atexit.register(_clear_all_caches)
